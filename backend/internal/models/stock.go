@@ -58,11 +58,11 @@ type ChartData struct {
 
 // PotentialStock represents a stock with high potential
 type PotentialStock struct {
-	StockQuote
+	StockWithSector
 	Score      int      `json:"score"`
 	Reason     string   `json:"reason"`
 	Tags       []string `json:"tags"`
-	SignalType string   `json:"signalType"` // "bullish", "oversold", "breakout", "volume_surge"
+	SignalType  string   `json:"signalType"` // "bullish", "oversold", "breakout", "volume_surge"
 }
 
 // Sector represents a market sector group

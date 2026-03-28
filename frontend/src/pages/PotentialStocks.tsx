@@ -34,7 +34,7 @@ export default function PotentialStocks() {
             ⭐ 今日潛力股
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            透過量能、價格動能、均線與估值綜合評分篩選
+            台灣 AI/科技供應鏈股票，透過量能、價格動能、均線與估值綜合評分篩選
           </p>
         </div>
         <button
@@ -54,7 +54,7 @@ export default function PotentialStocks() {
           <div>
             <h3 className="text-sm font-semibold text-yellow-400 mb-1">評分機制說明</h3>
             <p className="text-xs text-gray-400 leading-relaxed">
-              潛力股評分綜合以下因素：
+              追蹤台灣 AI/科技供應鏈 20 檔股票（晶圓代工、IC設計、AI伺服器、散熱電源等8大領域），評分綜合以下因素：
               <span className="text-white">量能爆發</span>（成交量 &gt; 均量1.5x）、
               <span className="text-white">價格動能</span>（當日漲幅）、
               <span className="text-white">52週位置</span>（近高點突破或低點反彈）、

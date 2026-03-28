@@ -22,16 +22,21 @@ export default function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [ovRes, potRes, eduRes, newsRes] = await Promise.all([
+      const [ovResult, potResult, eduResult, newsResult] = await Promise.allSettled([
         getMarketOverview(),
         getPotentialStocks(),
         getAllEducation(),
         getMarketNews(),
       ])
-      setOverview(ovRes)
-      setPotentials(potRes.stocks ?? [])
-      setEducation((eduRes.contents ?? []).slice(0, 3))
-      setNews({ tw: newsRes.tw ?? [], us: newsRes.us ?? [] })
+      if (ovResult.status === 'fulfilled') setOverview(ovResult.value)
+      if (potResult.status === 'fulfilled') setPotentials(potResult.value.stocks ?? [])
+      if (eduResult.status === 'fulfilled') setEducation((eduResult.value.contents ?? []).slice(0, 3))
+      if (newsResult.status === 'fulfilled') setNews({ tw: newsResult.value.tw ?? [], us: newsResult.value.us ?? [] })
+
+      const allFailed = [ovResult, potResult, eduResult, newsResult].every(r => r.status === 'rejected')
+      if (allFailed) {
+        setError('無法連線到後端服務，請確認後端伺服器是否已啟動（port 8080）')
+      }
       setLastUpdated(new Date())
     } catch {
       setError('無法連線到後端服務，請確認後端伺服器是否已啟動（port 8080）')

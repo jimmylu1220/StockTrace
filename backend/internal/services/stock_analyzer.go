@@ -10,28 +10,32 @@ import (
 
 // AnalyzePotentialStocks finds stocks with high potential from a combined pool
 func AnalyzePotentialStocks() ([]models.PotentialStock, error) {
-	// Fetch both TW and US stocks
+	// Only fetch TW AI/Tech stocks
 	twQuotes, err := FetchTWStocks()
 	if err != nil {
-		twQuotes = []models.StockQuote{}
+		return nil, err
 	}
 
-	usQuotes, err := FetchUSStocks()
-	if err != nil {
-		usQuotes = []models.StockQuote{}
+	// Build sector name lookup
+	sectorNames := make(map[string]string)
+	for _, s := range GetTWSectors() {
+		sectorNames[s.ID] = s.Name
 	}
-
-	allQuotes := append(twQuotes, usQuotes...)
 
 	var potentials []models.PotentialStock
-	for _, q := range allQuotes {
+	for _, q := range twQuotes {
 		if q.Price <= 0 {
 			continue
 		}
 		score, reason, tags, signalType := scoreStock(q)
 		if score >= 60 {
+			sid := GetTWSymbolSector(q.Symbol)
 			potentials = append(potentials, models.PotentialStock{
-				StockQuote: q,
+				StockWithSector: models.StockWithSector{
+					StockQuote: q,
+					SectorID:   sid,
+					SectorName: sectorNames[sid],
+				},
 				Score:      score,
 				Reason:     reason,
 				Tags:       tags,

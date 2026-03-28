@@ -4,9 +4,21 @@ import type { StockWithSector, Sector } from '../types'
 import { getTaiwanStocks } from '../services/api'
 import StockTable from '../components/StockTable'
 
+// Static fallback — mirrors backend twSectors; tabs always render even if API is slow
+const STATIC_SECTORS: Sector[] = [
+  { id: 'foundry',       name: '晶圓代工',       enName: 'Wafer Foundry',                    icon: '🔬', description: '', symbols: ['2330.TW','2303.TW','5347.TW','6770.TW','3105.TW'] },
+  { id: 'chip_design',   name: 'IC設計',          enName: 'Chip Design (Fabless)',            icon: '💡', description: '', symbols: ['2454.TW','2379.TW','3034.TW','4966.TW','5274.TW','3443.TW','4919.TW','3529.TW','2388.TW','6643.TW'] },
+  { id: 'ai_server',     name: 'AI伺服器/雲端',   enName: 'AI Server & Cloud Infrastructure', icon: '🖥️', description: '', symbols: ['2382.TW','2317.TW','2356.TW','3231.TW','2324.TW','4938.TW','6669.TW','2301.TW','3706.TW'] },
+  { id: 'thermal_power', name: '散熱/電源管理',   enName: 'Thermal & Power Management',       icon: '⚡', description: '', symbols: ['2308.TW','3017.TW','3324.TW','6415.TW','3535.TW','6230.TW','3023.TW'] },
+  { id: 'osat',          name: '封裝測試',         enName: 'OSAT',                             icon: '📦', description: '', symbols: ['3711.TW','2449.TW','6278.TW','8150.TW','6271.TW','3162.TW'] },
+  { id: 'pcb_substrate', name: 'PCB/載板',         enName: 'PCB & ABF Substrate',              icon: '🔌', description: '', symbols: ['3037.TW','8046.TW','3044.TW','2368.TW','2383.TW','4426.TW','6269.TW'] },
+  { id: 'network',       name: '網路/通訊設備',   enName: 'Network & Telecom Equipment',      icon: '📡', description: '', symbols: ['2345.TW','2395.TW','3596.TW','4906.TW'] },
+  { id: 'ai_pc',         name: 'AI PC/消費電子',  enName: 'AI PC & Consumer Electronics',     icon: '💻', description: '', symbols: ['2357.TW','2376.TW','2353.TW','2396.TW','2312.TW'] },
+]
+
 export default function TaiwanStocks() {
   const [stocks, setStocks] = useState<StockWithSector[]>([])
-  const [sectors, setSectors] = useState<Sector[]>([])
+  const [sectors, setSectors] = useState<Sector[]>(STATIC_SECTORS)
   const [activeSector, setActiveSector] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +29,8 @@ export default function TaiwanStocks() {
     try {
       const res = await getTaiwanStocks()
       setStocks(res.stocks ?? [])
-      setSectors(res.sectors ?? [])
+      // Merge API descriptions/icons into static structure
+      if (res.sectors && res.sectors.length > 0) setSectors(res.sectors)
     } catch {
       setError('無法取得台股資料')
     } finally {
@@ -34,7 +47,7 @@ export default function TaiwanStocks() {
   const activeSectorInfo = sectors.find(s => s.id === activeSector)
 
   const gainers = filtered.filter(s => s.changePercent > 0).length
-  const losers = filtered.filter(s => s.changePercent < 0).length
+  const losers  = filtered.filter(s => s.changePercent < 0).length
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -52,7 +65,7 @@ export default function TaiwanStocks() {
         </button>
       </div>
 
-      {/* Sector tabs */}
+      {/* Sector tabs — rendered from static data so always visible */}
       <div className="flex flex-wrap gap-2 mb-4">
         <button
           onClick={() => setActiveSector('all')}
@@ -76,8 +89,8 @@ export default function TaiwanStocks() {
         ))}
       </div>
 
-      {/* Sector description */}
-      {activeSectorInfo && (
+      {/* Active sector description (from API data) */}
+      {activeSectorInfo && activeSectorInfo.description && (
         <div className="card p-4 mb-4 bg-blue-500/5 border-blue-500/20">
           <div className="flex items-start gap-3">
             <span className="text-2xl">{activeSectorInfo.icon}</span>

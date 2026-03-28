@@ -63,7 +63,7 @@ export interface ChartData {
   candles: ChartCandle[]
 }
 
-export interface PotentialStock extends StockQuote {
+export interface PotentialStock extends StockWithSector {
   score: number
   reason: string
   tags: string[]

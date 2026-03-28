@@ -14,7 +14,14 @@ func GetStatisticalSignals(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"signals": signals, "total": len(signals)})
+	isWeekend := services.IsWeekend()
+	dataDate := services.LastTradingDate()
+	c.JSON(http.StatusOK, gin.H{
+		"signals":   signals,
+		"total":     len(signals),
+		"isWeekend": isWeekend,
+		"dataDate":  dataDate,
+	})
 }
 
 // GetSectors returns Taiwan sector definitions

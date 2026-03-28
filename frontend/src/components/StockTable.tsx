@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TrendingUp, TrendingDown, Search, ChevronUp, ChevronDown } from 'lucide-react'
-import type { StockQuote } from '../types'
+import type { StockQuote, StockWithSector } from '../types'
 import StockDetailModal from './StockDetailModal'
 
 interface Props {
@@ -137,6 +137,9 @@ export default function StockTable({ stocks, market }: Props) {
                       <div>
                         <p className="font-medium text-white">{stock.symbol}</p>
                         <p className="text-xs text-gray-500 truncate max-w-[120px]">{stock.name}</p>
+                        {(stock as StockWithSector).sectorName && (
+                          <p className="text-xs text-blue-400/70 truncate max-w-[120px]">{(stock as StockWithSector).sectorName}</p>
+                        )}
                       </div>
                     </div>
                   </td>

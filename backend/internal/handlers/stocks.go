@@ -10,7 +10,12 @@ import (
 func GetMarketOverview(c *gin.Context) {
 	overview, err := services.FetchMarketOverview()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Return empty overview with 200 so frontend can still render other sections
+		c.JSON(http.StatusOK, gin.H{
+			"tw":      []interface{}{},
+			"us":      []interface{}{},
+			"warning": "市場資料暫時無法取得，請稍後重試",
+		})
 		return
 	}
 	c.JSON(http.StatusOK, overview)

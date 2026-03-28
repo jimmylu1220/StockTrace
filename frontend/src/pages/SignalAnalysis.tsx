@@ -52,6 +52,8 @@ export default function SignalAnalysis() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<typeof FILTERS[number]>('全部')
   const [selected, setSelected] = useState<StatisticalSignal | null>(null)
+  const [isWeekend, setIsWeekend] = useState(false)
+  const [dataDate, setDataDate] = useState('')
 
   const fetchData = async () => {
     setLoading(true)
@@ -59,6 +61,8 @@ export default function SignalAnalysis() {
     try {
       const res = await getStatisticalSignals()
       setSignals(res.signals ?? [])
+      setIsWeekend(res.isWeekend ?? false)
+      setDataDate(res.dataDate ?? '')
     } catch {
       setError('無法取得分析資料，請稍後重試')
     } finally {
@@ -114,6 +118,16 @@ export default function SignalAnalysis() {
           </div>
         </div>
       </div>
+
+      {/* Weekend notice */}
+      {!loading && isWeekend && (
+        <div className="card p-3 mb-4 bg-yellow-500/5 border-yellow-500/20 flex items-center gap-2">
+          <span className="text-yellow-400 text-sm">📅</span>
+          <p className="text-xs text-yellow-400">
+            今日休市（週末）— 顯示上一交易日（{dataDate}）資料
+          </p>
+        </div>
+      )}
 
       {/* Summary counts */}
       {!loading && signals.length > 0 && (

@@ -9,9 +9,17 @@ import (
 	"stocktrace/backend/internal/models"
 )
 
+const signalsCacheKey = "statistical_signals"
+
 // AnalyzeStatisticalSignals fetches historical data for all stocks and
 // computes Z-score / RSI / Bollinger Band signals.
+// Results are cached for 30 minutes. If live quotes are unavailable (e.g. weekend/holiday),
+// it falls back to the chart's last candle price so the page still loads.
 func AnalyzeStatisticalSignals() ([]models.StatisticalSignal, error) {
+	if cached, ok := getFromCache(signalsCacheKey); ok {
+		return cached.([]models.StatisticalSignal), nil
+	}
+
 	// Build symbol list: TW + US
 	var allSymbols []string
 	for s := range GetTWStockNames() {
@@ -21,14 +29,12 @@ func AnalyzeStatisticalSignals() ([]models.StatisticalSignal, error) {
 		allSymbols = append(allSymbols, s)
 	}
 
-	// Fetch quotes for all symbols
-	quotes, err := FetchQuotes(allSymbols)
-	if err != nil {
-		return nil, err
-	}
-	quoteMap := make(map[string]models.StockQuote, len(quotes))
-	for _, q := range quotes {
-		quoteMap[q.Symbol] = q
+	// Best-effort quote fetch — failures are non-fatal; we fall back to chart data
+	quoteMap := make(map[string]models.StockQuote, len(allSymbols))
+	if quotes, err := FetchQuotes(allSymbols); err == nil {
+		for _, q := range quotes {
+			quoteMap[q.Symbol] = q
+		}
 	}
 
 	// Build sector info
@@ -46,6 +52,9 @@ func AnalyzeStatisticalSignals() ([]models.StatisticalSignal, error) {
 	sem := make(chan struct{}, 4) // max 4 concurrent chart requests
 	var wg sync.WaitGroup
 
+	twNames := GetTWStockNames()
+	usNames := GetUSStockNames()
+
 	for _, sym := range allSymbols {
 		wg.Add(1)
 		go func(s string) {
@@ -58,11 +67,24 @@ func AnalyzeStatisticalSignals() ([]models.StatisticalSignal, error) {
 				resultCh <- result{err: err}
 				return
 			}
+
 			q, ok := quoteMap[s]
 			if !ok {
-				resultCh <- result{err: fmt.Errorf("no quote for %s", s)}
-				return
+				// Synthesize a minimal quote from the last chart candle
+				if len(chart.Candles) == 0 {
+					resultCh <- result{err: fmt.Errorf("no data for %s", s)}
+					return
+				}
+				last := chart.Candles[len(chart.Candles)-1]
+				name := s
+				if cn, found := twNames[s]; found {
+					name = cn
+				} else if en, found := usNames[s]; found {
+					name = en
+				}
+				q = models.StockQuote{Symbol: s, Name: name, Price: last.Close}
 			}
+
 			sig := calcSignal(q, chart, sectorNames)
 			resultCh <- result{signal: sig}
 		}(sym)
@@ -81,6 +103,10 @@ func AnalyzeStatisticalSignals() ([]models.StatisticalSignal, error) {
 	sort.Slice(signals, func(i, j int) bool {
 		return signals[i].SignalScore > signals[j].SignalScore
 	})
+
+	if len(signals) > 0 {
+		setCache(signalsCacheKey, signals, cacheTTLSignals)
+	}
 	return signals, nil
 }
 

@@ -49,6 +49,9 @@ export default function PotentialStockCard({ stock, onClick }: Props) {
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">{stock.name}</p>
+          {stock.sectorName && (
+            <p className="text-xs text-blue-400/70 mt-0.5">{stock.sectorName}</p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-sm font-bold text-white">

@@ -16,10 +16,18 @@ import (
 const (
 	yahooFinanceQuoteURL = "https://query2.finance.yahoo.com/v7/finance/quote?symbols=%s&crumb=%s"
 	yahooFinanceChartURL = "https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s&crumb=%s"
-	yahooNewsSearchURL   = "https://query1.finance.yahoo.com/v1/finance/search?q=%s&newsCount=10&crumb=%s"
+	yahooNewsSearchURL   = "https://query1.finance.yahoo.com/v1/finance/search?q=%s&newsCount=15&crumb=%s"
 	yahooCrumbURL        = "https://query2.finance.yahoo.com/v1/test/getcrumb"
 	yahooConsentURL      = "https://finance.yahoo.com/"
 	userAgent            = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
+// Cache TTL constants — centralised so all services stay consistent.
+var (
+	cacheTTLDefault = 5 * time.Minute
+	cacheTTLChart   = 2 * time.Hour
+	cacheTTLNews    = 30 * time.Minute
+	cacheTTLSignals = 30 * time.Minute
 )
 
 type cacheEntry struct {
@@ -28,167 +36,29 @@ type cacheEntry struct {
 }
 
 var (
-	cache    sync.Map
-	cacheTTL = 5 * time.Minute
+	cache sync.Map
 
 	httpClient *http.Client
+	clientMu   sync.Mutex
 	crumb      string
 	crumbMu    sync.Mutex
-	clientOnce sync.Once
 )
-
-// ── Taiwan AI/Tech stocks by sector ─────────────────────────────────────────
-
-var twSectors = []models.Sector{
-	{
-		ID:     "foundry",
-		Name:   "晶圓代工",
-		EnName: "Wafer Foundry",
-		Icon:   "🔬",
-		Description: "台灣是全球晶圓代工的心臟地帶，台積電掌握全球超過60%先進製程市占率。" +
-			"AI晶片（NVIDIA H100/B200、Apple Silicon）全由台積電代工，需求持續爆發。",
-		Symbols: []string{"2330.TW", "2303.TW"},
-	},
-	{
-		ID:     "chip_design",
-		Name:   "IC設計",
-		EnName: "Chip Design (Fabless)",
-		Icon:   "💡",
-		Description: "IC設計公司不自建晶圓廠，委由台積電等代工。" +
-			"聯發科在手機SoC、WiFi 7晶片、AI邊緣推論晶片等市場持續領先，積極切入車用AI與資料中心市場。",
-		Symbols: []string{"2454.TW", "2379.TW", "3034.TW"},
-	},
-	{
-		ID:     "ai_server",
-		Name:   "AI伺服器/雲端",
-		EnName: "AI Server & Cloud Infrastructure",
-		Icon:   "🖥️",
-		Description: "ChatGPT等AI服務帶動GPU伺服器需求暴增。廣達、英業達是NVIDIA DGX/HGX伺服器的主要代工廠，" +
-			"鴻海則積極切入AI伺服器與電動車市場，為台灣AI供應鏈的核心製造商。",
-		Symbols: []string{"2382.TW", "2317.TW", "2356.TW", "3231.TW"},
-	},
-	{
-		ID:     "thermal_power",
-		Name:   "散熱/電源管理",
-		EnName: "Thermal & Power Management",
-		Icon:   "⚡",
-		Description: "AI GPU耗電量是一般伺服器的5-10倍，散熱與電源需求急劇提升。" +
-			"台達電是全球最大電源供應器廠，奇鋐、雙鴻則是液冷/氣冷散熱模組的重要供應商。",
-		Symbols: []string{"2308.TW", "3017.TW", "3324.TW"},
-	},
-	{
-		ID:     "osat",
-		Name:   "封裝測試",
-		EnName: "OSAT (Semiconductor Packaging & Test)",
-		Icon:   "📦",
-		Description: "AI時代對先進封裝（CoWoS、SoIC）需求激增，CoWoS用於整合HBM記憶體與GPU。" +
-			"日月光投控是全球最大封裝測試廠，直接受益AI晶片封裝需求浪潮。",
-		Symbols: []string{"3711.TW", "2449.TW"},
-	},
-	{
-		ID:     "pcb_substrate",
-		Name:   "PCB/載板",
-		EnName: "PCB & ABF Substrate",
-		Icon:   "🔌",
-		Description: "ABF載板（Ajinomoto Build-up Film）是高階AI晶片封裝不可或缺的材料，" +
-			"AI晶片封裝面積越大、ABF用量越多。欣興電子是全球ABF載板龍頭，供應嚴重短缺。",
-		Symbols: []string{"3037.TW", "8046.TW"},
-	},
-	{
-		ID:     "network",
-		Name:   "網路/通訊設備",
-		EnName: "Network & Telecom Equipment",
-		Icon:   "📡",
-		Description: "AI資料中心需要高速乙太網路交換器（400G/800G）連接GPU叢集。" +
-			"智邦科技是全球前三大企業級交換器廠；研華則是工業電腦/邊緣AI運算的全球領導廠商。",
-		Symbols: []string{"2345.TW", "2395.TW"},
-	},
-	{
-		ID:     "ai_pc",
-		Name:   "AI PC/消費電子",
-		EnName: "AI PC & Consumer Electronics",
-		Icon:   "💻",
-		Description: "Intel、AMD、高通推出AI PC晶片帶動換機潮，搭載NPU的AI PC能在本地執行生成式AI。" +
-			"華碩積極布局AI PC與AI顯卡市場，技嘉則是AI伺服器主機板與高階顯卡的重要製造商。",
-		Symbols: []string{"2357.TW", "2376.TW"},
-	},
-}
-
-// flat map of symbol → Chinese name (all TW AI/tech stocks)
-var twStocks = func() map[string]string {
-	m := map[string]string{
-		"2330.TW": "台積電",
-		"2303.TW": "聯電",
-		"2454.TW": "聯發科",
-		"2379.TW": "瑞昱",
-		"3034.TW": "聯詠",
-		"2382.TW": "廣達",
-		"2317.TW": "鴻海",
-		"2356.TW": "英業達",
-		"3231.TW": "緯創",
-		"2308.TW": "台達電",
-		"3017.TW": "奇鋐",
-		"3324.TW": "雙鴻",
-		"3711.TW": "日月光投控",
-		"2449.TW": "京元電子",
-		"3037.TW": "欣興",
-		"8046.TW": "南電",
-		"2345.TW": "智邦",
-		"2395.TW": "研華",
-		"2357.TW": "華碩",
-		"2376.TW": "技嘉",
-	}
-	return m
-}()
-
-// symbol → sectorID lookup
-var twSymbolSector = func() map[string]string {
-	m := make(map[string]string)
-	for _, s := range twSectors {
-		for _, sym := range s.Symbols {
-			m[sym] = s.ID
-		}
-	}
-	return m
-}()
-
-var usStocks = map[string]string{
-	"AAPL":  "Apple Inc.",
-	"MSFT":  "Microsoft",
-	"NVDA":  "NVIDIA",
-	"GOOGL": "Alphabet",
-	"AMZN":  "Amazon",
-	"META":  "Meta",
-	"TSLA":  "Tesla",
-	"BRK-B": "Berkshire Hathaway",
-	"JPM":   "JPMorgan Chase",
-	"V":     "Visa",
-	"WMT":   "Walmart",
-	"JNJ":   "Johnson & Johnson",
-	"MA":    "Mastercard",
-	"HD":    "Home Depot",
-	"AVGO":  "Broadcom",
-	"ORCL":  "Oracle",
-	"AMD":   "AMD",
-	"INTC":  "Intel",
-	"NFLX":  "Netflix",
-	"DIS":   "Disney",
-}
-
-var twIndices = map[string]string{
-	"^TWII":  "台灣加權指數",
-	"^TWOII": "台灣OTC指數",
-}
-
-var usIndices = map[string]string{
-	"^GSPC": "S&P 500",
-	"^IXIC": "那斯達克",
-	"^DJI":  "道瓊工業指數",
-}
 
 // ── HTTP client & crumb ──────────────────────────────────────────────────────
 
-func initClient() {
+func getOrInitClient() *http.Client {
+	clientMu.Lock()
+	defer clientMu.Unlock()
+	if httpClient == nil {
+		jar, _ := cookiejar.New(nil)
+		httpClient = &http.Client{Timeout: 15 * time.Second, Jar: jar}
+	}
+	return httpClient
+}
+
+func resetClientLocked() {
+	clientMu.Lock()
+	defer clientMu.Unlock()
 	jar, _ := cookiejar.New(nil)
 	httpClient = &http.Client{Timeout: 15 * time.Second, Jar: jar}
 }
@@ -199,12 +69,12 @@ func getCrumb() (string, error) {
 	if crumb != "" {
 		return crumb, nil
 	}
-	clientOnce.Do(initClient)
+	client := getOrInitClient()
 
 	req, _ := http.NewRequest("GET", yahooConsentURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to init session: %w", err)
 	}
@@ -212,7 +82,7 @@ func getCrumb() (string, error) {
 
 	req2, _ := http.NewRequest("GET", yahooCrumbURL, nil)
 	req2.Header.Set("User-Agent", userAgent)
-	resp2, err := httpClient.Do(req2)
+	resp2, err := client.Do(req2)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch crumb: %w", err)
 	}
@@ -227,13 +97,14 @@ func getCrumb() (string, error) {
 }
 
 func resetCrumb() {
+	resetClientLocked()
 	crumbMu.Lock()
 	crumb = ""
 	crumbMu.Unlock()
 }
 
 func doRequest(url string) ([]byte, error) {
-	clientOnce.Do(initClient)
+	client := getOrInitClient()
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -241,7 +112,7 @@ func doRequest(url string) ([]byte, error) {
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +160,7 @@ func getFromCache(key string) (interface{}, bool) {
 }
 
 func setCache(key string, data interface{}, ttl ...time.Duration) {
-	d := cacheTTL
+	d := cacheTTLDefault
 	if len(ttl) > 0 {
 		d = ttl[0]
 	}
@@ -366,7 +237,6 @@ func FetchTWStocksWithSector() ([]models.StockWithSector, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Build sector name lookup
 	sectorNames := make(map[string]string)
 	for _, s := range twSectors {
 		sectorNames[s.ID] = s.Name
@@ -495,11 +365,11 @@ func FetchChartData(symbol, interval, rangeParam string) (*models.ChartData, err
 		name = en
 	}
 	data := &models.ChartData{Symbol: symbol, Name: name, Candles: candles}
-	setCache(cacheKey, data, 2*time.Hour)
+	setCache(cacheKey, data, cacheTTLChart)
 	return data, nil
 }
 
-// FetchNews fetches financial news for a given query
+// FetchNews fetches financial news for a given query from Yahoo Finance.
 func FetchNews(query string) ([]models.NewsItem, error) {
 	cacheKey := "news_" + query
 	if cached, ok := getFromCache(cacheKey); ok {
@@ -515,7 +385,7 @@ func FetchNews(query string) ([]models.NewsItem, error) {
 	var items []models.NewsItem
 	seen := make(map[string]bool)
 	for _, n := range resp.News {
-		if seen[n.UUID] || n.Type != "STORY" {
+		if seen[n.UUID] || n.UUID == "" || (n.Type != "STORY" && n.Type != "VIDEO") {
 			continue
 		}
 		seen[n.UUID] = true
@@ -533,12 +403,32 @@ func FetchNews(query string) ([]models.NewsItem, error) {
 			Related:     n.RelatedTickers,
 		})
 	}
-	setCache(cacheKey, items, 30*time.Minute)
+	setCache(cacheKey, items, cacheTTLNews)
 	return items, nil
 }
 
 // GetTWSectors returns all TW sector definitions
 func GetTWSectors() []models.Sector { return twSectors }
+
+var taipeiTZ = time.FixedZone("Asia/Taipei", 8*60*60)
+
+// IsWeekend returns true if today is Saturday or Sunday in Taipei timezone.
+func IsWeekend() bool {
+	wd := time.Now().In(taipeiTZ).Weekday()
+	return wd == time.Saturday || wd == time.Sunday
+}
+
+// LastTradingDate returns the most recent weekday date in Taipei timezone (YYYY-MM-DD).
+func LastTradingDate() string {
+	now := time.Now().In(taipeiTZ)
+	for {
+		wd := now.Weekday()
+		if wd != time.Saturday && wd != time.Sunday {
+			return now.Format("2006-01-02")
+		}
+		now = now.AddDate(0, 0, -1)
+	}
+}
 
 // GetTWSymbolSector returns the sector ID for a TW symbol
 func GetTWSymbolSector(symbol string) string { return twSymbolSector[symbol] }

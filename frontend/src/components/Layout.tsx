@@ -1,13 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, Globe, Star, LineChart, BookOpen, BarChart2 } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, Globe, Star, LineChart, BookOpen, BarChart2, Network, Newspaper } from 'lucide-react'
 
 const navItems = [
   { to: '/',          icon: LayoutDashboard, label: '總覽' },
-  { to: '/tw-stocks', icon: TrendingUp,       label: '台股 AI/科技' },
-  { to: '/us-stocks', icon: Globe,            label: '美股' },
-  { to: '/potential', icon: Star,             label: '潛力股' },
-  { to: '/signals',   icon: LineChart,        label: '統計買入信號' },
-  { to: '/education', icon: BookOpen,         label: '投資學堂' },
+  { to: '/tw-stocks', icon: TrendingUp,      label: '台股 AI/科技' },
+  { to: '/industry',  icon: Network,         label: '產業版圖' },
+  { to: '/us-stocks', icon: Globe,           label: '美股' },
+  { to: '/potential', icon: Star,            label: '潛力股' },
+  { to: '/signals',   icon: LineChart,       label: '統計買入信號' },
+  { to: '/news',      icon: Newspaper,       label: '財經新聞' },
+  { to: '/education', icon: BookOpen,        label: '投資學堂' },
 ]
 
 export default function Layout() {

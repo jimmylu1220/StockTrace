@@ -37,8 +37,13 @@ export async function getStockChart(symbol: string, interval = '1d', range = '3m
   return res.data
 }
 
-export async function getStatisticalSignals(): Promise<{ signals: StatisticalSignal[]; total: number }> {
-  const res = await api.get<{ signals: StatisticalSignal[]; total: number }>('/analysis/signals')
+export async function getStatisticalSignals(): Promise<{ signals: StatisticalSignal[]; total: number; isWeekend: boolean; dataDate: string }> {
+  const res = await api.get<{ signals: StatisticalSignal[]; total: number; isWeekend: boolean; dataDate: string }>('/analysis/signals')
+  return res.data
+}
+
+export async function getSectors(): Promise<{ sectors: Sector[] }> {
+  const res = await api.get<{ sectors: Sector[] }>('/analysis/sectors')
   return res.data
 }
 
