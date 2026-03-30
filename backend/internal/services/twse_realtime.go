@@ -12,6 +12,7 @@ import (
 	"stocktrace/backend/internal/models"
 )
 
+
 // twseExchange maps stock code (no .TW suffix) → exchange prefix (tse / otc).
 // TSE = 台灣證券交易所 (上市)
 // OTC = 櫃買中心 (上櫃)
@@ -73,10 +74,7 @@ var twseExchange = map[string]string{
 	"4906": "otc", // 正文
 }
 
-const (
-	twseAPIURL   = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=%s"
-	cacheTTLTWSE = 10 * time.Second
-)
+const cacheTTLTWSE = 10 * time.Second
 
 // IsTrading returns true during TWSE trading hours: weekdays 09:00-13:30 Taipei time.
 func IsTrading() bool {
@@ -98,11 +96,11 @@ type twseResponse struct {
 type twseStock struct {
 	Code      string `json:"c"` // stock code
 	Name      string `json:"n"` // company name
-	Price     string `json:"z"` // latest transaction price ("-" if no trade yet)
-	Open      string `json:"o"` // open price
+	Price     string `json:"z"` // latest transaction price ("-" means no match yet in this session)
+	Open      string `json:"o"` // opening price (set after call-auction, even if z is "-")
 	High      string `json:"h"` // day high
 	Low       string `json:"l"` // day low
-	PrevClose string `json:"y"` // previous day close
+	PrevClose string `json:"y"` // previous day closing price
 	Volume    string `json:"v"` // cumulative volume in lots (張, 1 lot = 1000 shares)
 }
 
@@ -151,13 +149,13 @@ func FetchTWSERealtime() ([]models.StockQuote, error) {
 		return nil, fmt.Errorf("no TWSE exchange mappings found")
 	}
 
-	url := fmt.Sprintf(twseAPIURL, strings.Join(parts, "|"))
-
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", "https://mis.twse.com.tw/stock/api/getStockInfo.jsp", nil)
 	if err != nil {
 		return nil, err
 	}
+	// Set RawQuery directly so '|' is NOT percent-encoded — the TWSE API requires literal '|'
+	req.URL.RawQuery = "ex_ch=" + strings.Join(parts, "|")
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Referer", "https://mis.twse.com.tw/stock/index.jsp")
 	req.Header.Set("Accept", "application/json, text/javascript, */*")
@@ -195,12 +193,18 @@ func FetchTWSERealtime() ([]models.StockQuote, error) {
 			name = s.Name
 		}
 
-		price := parseF64(s.Price)
 		prevClose := parseF64(s.PrevClose)
 
-		// No transaction yet today — use yesterday's close as display price
+		// Price priority:
+		//   1. z (latest transaction) — most current
+		//   2. o (opening price) — available after call-auction even when z is "-"
+		//   3. y (previous close) — last resort; results in 0% change (correct for pre-open)
+		price := parseF64(s.Price) // z field
 		if price == 0 {
-			price = prevClose
+			price = parseF64(s.Open) // o field
+		}
+		if price == 0 {
+			price = prevClose // y field
 		}
 
 		change := price - prevClose
