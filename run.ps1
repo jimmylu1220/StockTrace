@@ -10,7 +10,7 @@ switch ($Command) {
         Write-Host "Building and starting StockTrace..." -ForegroundColor Cyan
         docker compose up --build -d
         Write-Host ""
-        Write-Host "StockTrace is running at http://localhost:3000" -ForegroundColor Green
+        Write-Host "StockTrace is running at http://localhost:8080" -ForegroundColor Green
         Write-Host "Use '.\run.ps1 logs' to view logs, '.\run.ps1 down' to stop."
     }
     "down" {
@@ -21,7 +21,7 @@ switch ($Command) {
         Write-Host "Restarting StockTrace..." -ForegroundColor Cyan
         docker compose down
         docker compose up --build -d
-        Write-Host "StockTrace restarted at http://localhost:3000" -ForegroundColor Green
+        Write-Host "StockTrace restarted at http://localhost:8080" -ForegroundColor Green
     }
     "logs" {
         docker compose logs -f

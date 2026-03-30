@@ -11,7 +11,7 @@ case "$CMD" in
     echo "Building and starting StockTrace..."
     docker compose up --build -d
     echo ""
-    echo "StockTrace is running at http://localhost:3000"
+    echo "StockTrace is running at http://localhost:8080"
     echo "Use './run.sh logs' to view logs, './run.sh down' to stop."
     ;;
   down)
@@ -22,7 +22,7 @@ case "$CMD" in
     echo "Restarting StockTrace..."
     docker compose down
     docker compose up --build -d
-    echo "StockTrace restarted at http://localhost:3000"
+    echo "StockTrace restarted at http://localhost:8080"
     ;;
   logs)
     docker compose logs -f
