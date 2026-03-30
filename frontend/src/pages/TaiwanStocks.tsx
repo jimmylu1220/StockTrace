@@ -18,21 +18,53 @@ const STATIC_SECTORS: Sector[] = [
   { id: 'ai_pc',         name: 'AI PC/消費電子',  enName: 'AI PC & Consumer Electronics',     icon: '💻', description: '', symbols: ['2357.TW','2376.TW','2353.TW','2396.TW','2312.TW'] },
 ]
 
+// ── Trading hours helper (Asia/Taipei, UTC+8) ────────────────────────────────
+
+function getTaipeiNow(): { hour: number; minute: number; day: number } {
+  // Use Intl to get wall-clock time in Taipei regardless of user's local timezone
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    hour: 'numeric',
+    minute: 'numeric',
+    weekday: 'short',
+    hour12: false,
+  }).formatToParts(new Date())
+
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? '0'
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+  return {
+    hour:   parseInt(get('hour')),
+    minute: parseInt(get('minute')),
+    day:    weekdayMap[get('weekday')] ?? new Date().getDay(),
+  }
+}
+
+function isTradingHours(): boolean {
+  const { hour, minute, day } = getTaipeiNow()
+  if (day === 0 || day === 6) return false           // weekend
+  const mins = hour * 60 + minute
+  return mins >= 9 * 60 && mins < 13 * 60 + 30      // 09:00 – 13:30
+}
+
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function TaiwanStocks() {
-  const [stocks, setStocks] = useState<StockWithSector[]>([])
-  const [sectors, setSectors] = useState<Sector[]>(STATIC_SECTORS)
-  const [activeSector, setActiveSector] = useState<string>('all')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [stocks, setStocks]               = useState<StockWithSector[]>([])
+  const [sectors, setSectors]             = useState<Sector[]>(STATIC_SECTORS)
+  const [activeSector, setActiveSector]   = useState<string>('all')
+  const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated]     = useState<Date | null>(null)
   const [autoRefreshing, setAutoRefreshing] = useState(false)
-  // countdown 0-100 for the progress bar (100 = just refreshed, 0 = about to refresh)
-  const [countdown, setCountdown] = useState(100)
-  const lastFetchRef = useRef<number>(Date.now())
+  const [marketOpen, setMarketOpen]       = useState(isTradingHours())
+  // countdown 100→0: percentage of interval remaining until next auto-refresh
+  const [countdown, setCountdown]         = useState(100)
+  const lastFetchRef                      = useRef<number>(Date.now())
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -56,34 +88,40 @@ export default function TaiwanStocks() {
   // Initial load
   useEffect(() => { fetchData(false) }, [fetchData])
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh: only during trading hours (09:00–13:30 Taipei, weekdays)
   useEffect(() => {
-    const interval = setInterval(() => fetchData(true), AUTO_REFRESH_INTERVAL)
+    const interval = setInterval(() => {
+      const open = isTradingHours()
+      setMarketOpen(open)
+      if (open) fetchData(true)
+    }, AUTO_REFRESH_INTERVAL)
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Countdown progress bar (updates every 100ms)
+  // Countdown progress bar (updates every 100 ms); pauses when market is closed
   useEffect(() => {
     const timer = setInterval(() => {
+      if (!marketOpen) {
+        setCountdown(0)
+        return
+      }
       const elapsed = Date.now() - lastFetchRef.current
-      const pct = Math.max(0, 100 - (elapsed / AUTO_REFRESH_INTERVAL) * 100)
-      setCountdown(pct)
+      setCountdown(Math.max(0, 100 - (elapsed / AUTO_REFRESH_INTERVAL) * 100))
     }, 100)
     return () => clearInterval(timer)
-  }, [])
+  }, [marketOpen])
 
   const filtered = activeSector === 'all'
     ? stocks
     : stocks.filter(s => s.sectorId === activeSector)
 
   const activeSectorInfo = sectors.find(s => s.id === activeSector)
-
   const gainers = filtered.filter(s => s.changePercent > 0).length
   const losers  = filtered.filter(s => s.changePercent < 0).length
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             🇹🇼 台灣 AI / 科技股
@@ -91,34 +129,40 @@ export default function TaiwanStocks() {
           <p className="text-sm text-gray-500 mt-1">聚焦 AI 供應鏈：晶圓代工、IC設計、AI伺服器、散熱電源等8大領域</p>
         </div>
 
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1.5">
           <button onClick={() => fetchData(false)} disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading || autoRefreshing ? 'animate-spin' : ''}`} />
             重新整理
           </button>
+
+          {/* Market status badge */}
+          <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${
+            marketOpen
+              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : 'bg-gray-800 text-gray-500 border border-gray-700'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${marketOpen ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
+            {marketOpen ? '開盤中・每10秒自動刷新' : '收盤中・09:00 開始自動刷新'}
+          </div>
+
           {lastUpdated && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${autoRefreshing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`}
-              />
-              更新於 {formatTime(lastUpdated)}・每10秒自動刷新
-            </div>
+            <span className="text-xs text-gray-600">
+              {autoRefreshing ? '更新中…' : `更新於 ${formatTime(lastUpdated)}`}
+            </span>
           )}
         </div>
       </div>
 
-      {/* Auto-refresh countdown progress bar */}
-      {lastUpdated && (
-        <div className="w-full h-0.5 bg-gray-800 rounded-full mb-4 overflow-hidden">
-          <div
-            className="h-full bg-blue-500/60 transition-none"
-            style={{ width: `${countdown}%` }}
-          />
-        </div>
-      )}
+      {/* Countdown progress bar — only shown during trading hours */}
+      <div className="w-full h-0.5 bg-gray-800 rounded-full mb-4 overflow-hidden">
+        <div
+          className={`h-full transition-none ${marketOpen ? 'bg-blue-500/60' : 'bg-gray-700'}`}
+          style={{ width: `${marketOpen ? countdown : 100}%` }}
+        />
+      </div>
 
-      {/* Sector tabs — rendered from static data so always visible */}
+      {/* Sector tabs */}
       <div className="flex flex-wrap gap-2 mb-4">
         <button
           onClick={() => setActiveSector('all')}
@@ -142,7 +186,7 @@ export default function TaiwanStocks() {
         ))}
       </div>
 
-      {/* Active sector description (from API data) */}
+      {/* Active sector description */}
       {activeSectorInfo && activeSectorInfo.description && (
         <div className="card p-4 mb-4 bg-blue-500/5 border-blue-500/20">
           <div className="flex items-start gap-3">
