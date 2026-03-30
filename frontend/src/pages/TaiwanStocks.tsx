@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { StockWithSector, Sector } from '../types'
 import { getTaiwanStocks } from '../services/api'
 import StockTable from '../components/StockTable'
+
+const AUTO_REFRESH_INTERVAL = 10_000 // 10 seconds
 
 // Static fallback — mirrors backend twSectors; tabs always render even if API is slow
 const STATIC_SECTORS: Sector[] = [
@@ -16,29 +18,59 @@ const STATIC_SECTORS: Sector[] = [
   { id: 'ai_pc',         name: 'AI PC/消費電子',  enName: 'AI PC & Consumer Electronics',     icon: '💻', description: '', symbols: ['2357.TW','2376.TW','2353.TW','2396.TW','2312.TW'] },
 ]
 
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
 export default function TaiwanStocks() {
   const [stocks, setStocks] = useState<StockWithSector[]>([])
   const [sectors, setSectors] = useState<Sector[]>(STATIC_SECTORS)
   const [activeSector, setActiveSector] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [autoRefreshing, setAutoRefreshing] = useState(false)
+  // countdown 0-100 for the progress bar (100 = just refreshed, 0 = about to refresh)
+  const [countdown, setCountdown] = useState(100)
+  const lastFetchRef = useRef<number>(Date.now())
 
-  const fetchData = async () => {
-    setLoading(true)
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    else setAutoRefreshing(true)
     setError(null)
     try {
       const res = await getTaiwanStocks()
       setStocks(res.stocks ?? [])
-      // Merge API descriptions/icons into static structure
       if (res.sectors && res.sectors.length > 0) setSectors(res.sectors)
+      setLastUpdated(new Date())
+      lastFetchRef.current = Date.now()
+      setCountdown(100)
     } catch {
-      setError('無法取得台股資料')
+      if (!silent) setError('無法取得台股資料')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
+      else setAutoRefreshing(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { fetchData() }, [])
+  // Initial load
+  useEffect(() => { fetchData(false) }, [fetchData])
+
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => fetchData(true), AUTO_REFRESH_INTERVAL)
+    return () => clearInterval(interval)
+  }, [fetchData])
+
+  // Countdown progress bar (updates every 100ms)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - lastFetchRef.current
+      const pct = Math.max(0, 100 - (elapsed / AUTO_REFRESH_INTERVAL) * 100)
+      setCountdown(pct)
+    }, 100)
+    return () => clearInterval(timer)
+  }, [])
 
   const filtered = activeSector === 'all'
     ? stocks
@@ -58,12 +90,33 @@ export default function TaiwanStocks() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">聚焦 AI 供應鏈：晶圓代工、IC設計、AI伺服器、散熱電源等8大領域</p>
         </div>
-        <button onClick={fetchData} disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors disabled:opacity-50">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          重新整理
-        </button>
+
+        <div className="flex flex-col items-end gap-1">
+          <button onClick={() => fetchData(false)} disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 ${loading || autoRefreshing ? 'animate-spin' : ''}`} />
+            重新整理
+          </button>
+          {lastUpdated && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${autoRefreshing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`}
+              />
+              更新於 {formatTime(lastUpdated)}・每10秒自動刷新
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Auto-refresh countdown progress bar */}
+      {lastUpdated && (
+        <div className="w-full h-0.5 bg-gray-800 rounded-full mb-4 overflow-hidden">
+          <div
+            className="h-full bg-blue-500/60 transition-none"
+            style={{ width: `${countdown}%` }}
+          />
+        </div>
+      )}
 
       {/* Sector tabs — rendered from static data so always visible */}
       <div className="flex flex-wrap gap-2 mb-4">

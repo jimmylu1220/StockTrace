@@ -25,6 +25,7 @@ const (
 // Cache TTL constants — centralised so all services stay consistent.
 var (
 	cacheTTLDefault = 5 * time.Minute
+	cacheTTLQuotes  = 30 * time.Second // stock quotes: short TTL to support frequent polling
 	cacheTTLChart   = 2 * time.Hour
 	cacheTTLNews    = 30 * time.Minute
 	cacheTTLSignals = 30 * time.Minute
@@ -212,7 +213,7 @@ func FetchQuotes(symbols []string) ([]models.StockQuote, error) {
 			MarketState:      r.MarketState,
 		})
 	}
-	setCache(cacheKey, quotes)
+	setCache(cacheKey, quotes, cacheTTLQuotes)
 	return quotes, nil
 }
 
