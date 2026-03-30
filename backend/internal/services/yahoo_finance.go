@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -171,13 +172,17 @@ func setCache(key string, data interface{}, ttl ...time.Duration) {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 func FetchQuotes(symbols []string) ([]models.StockQuote, error) {
-	cacheKey := "quotes_" + strings.Join(symbols, ",")
+	// Sort symbols so the cache key is deterministic regardless of caller order
+	sorted := make([]string, len(symbols))
+	copy(sorted, symbols)
+	sort.Strings(sorted)
+	cacheKey := "quotes_" + strings.Join(sorted, ",")
 	if cached, ok := getFromCache(cacheKey); ok {
 		return cached.([]models.StockQuote), nil
 	}
 	var yfResp models.YFQuoteResponse
 	err := fetchWithCrumb(func(c string) string {
-		return fmt.Sprintf(yahooFinanceQuoteURL, strings.Join(symbols, ","), c)
+		return fmt.Sprintf(yahooFinanceQuoteURL, strings.Join(sorted, ","), c)
 	}, &yfResp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch quotes: %w", err)
@@ -234,10 +239,35 @@ func FetchUSStocks() ([]models.StockQuote, error) {
 }
 
 func FetchTWStocksWithSector() ([]models.StockWithSector, error) {
+	// Yahoo Finance provides full metadata (PE, market cap, 52w hi/lo, moving averages…)
 	quotes, err := FetchTWStocks()
 	if err != nil {
 		return nil, err
 	}
+
+	// During trading hours overlay price/change/volume with TWSE real-time data.
+	// TWSE is the authoritative source for intraday prices; Yahoo is 15-20 min delayed.
+	if IsTrading() {
+		twseQuotes, twseErr := FetchTWSERealtime()
+		if twseErr == nil {
+			priceMap := make(map[string]models.StockQuote, len(twseQuotes))
+			for _, tq := range twseQuotes {
+				priceMap[tq.Symbol] = tq
+			}
+			for i, q := range quotes {
+				if tq, ok := priceMap[q.Symbol]; ok && tq.Price > 0 {
+					quotes[i].Price = tq.Price
+					quotes[i].Change = tq.Change
+					quotes[i].ChangePercent = tq.ChangePercent
+					quotes[i].Volume = tq.Volume
+					quotes[i].DayHigh = tq.DayHigh
+					quotes[i].DayLow = tq.DayLow
+					quotes[i].MarketState = "REGULAR"
+				}
+			}
+		}
+	}
+
 	sectorNames := make(map[string]string)
 	for _, s := range twSectors {
 		sectorNames[s.ID] = s.Name
