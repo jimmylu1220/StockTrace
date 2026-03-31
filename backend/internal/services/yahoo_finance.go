@@ -26,7 +26,7 @@ const (
 // Cache TTL constants — centralised so all services stay consistent.
 var (
 	cacheTTLDefault = 5 * time.Minute
-	cacheTTLQuotes  = 30 * time.Second // stock quotes: short TTL to support frequent polling
+	cacheTTLQuotes  = 2 * time.Minute  // stock quotes: longer TTL on shared hosting to reduce 429s
 	cacheTTLChart   = 2 * time.Hour
 	cacheTTLNews    = 30 * time.Minute
 	cacheTTLSignals = 30 * time.Minute
@@ -71,11 +71,35 @@ func getCrumb() (string, error) {
 	if crumb != "" {
 		return crumb, nil
 	}
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+		c, err := tryCrumb()
+		if err == nil {
+			crumb = c
+			return crumb, nil
+		}
+		lastErr = err
+		// Reset client for next attempt (fresh cookies)
+		resetClientLocked()
+	}
+	return "", fmt.Errorf("failed after 3 attempts: %w", lastErr)
+}
+
+func tryCrumb() (string, error) {
 	client := getOrInitClient()
 
 	req, _ := http.NewRequest("GET", yahooConsentURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to init session: %w", err)
@@ -84,6 +108,9 @@ func getCrumb() (string, error) {
 
 	req2, _ := http.NewRequest("GET", yahooCrumbURL, nil)
 	req2.Header.Set("User-Agent", userAgent)
+	req2.Header.Set("Accept", "*/*")
+	req2.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req2.Header.Set("Referer", "https://finance.yahoo.com/")
 	resp2, err := client.Do(req2)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch crumb: %w", err)
@@ -94,8 +121,7 @@ func getCrumb() (string, error) {
 	if c == "" || resp2.StatusCode != 200 {
 		return "", fmt.Errorf("empty crumb (status %d)", resp2.StatusCode)
 	}
-	crumb = c
-	return crumb, nil
+	return c, nil
 }
 
 func resetCrumb() {
@@ -107,25 +133,36 @@ func resetCrumb() {
 
 func doRequest(url string) ([]byte, error) {
 	client := getOrInitClient()
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			time.Sleep(3 * time.Second)
+		}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Referer", "https://finance.yahoo.com/")
+		req.Header.Set("Origin", "https://finance.yahoo.com")
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == 429 {
+			continue // retry after delay
+		}
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			return nil, fmt.Errorf("status %d", resp.StatusCode)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("yahoo returned status %d", resp.StatusCode)
+		}
+		return io.ReadAll(resp.Body)
 	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("yahoo returned status %d", resp.StatusCode)
-	}
-	return io.ReadAll(resp.Body)
+	return nil, fmt.Errorf("yahoo returned status 429 after retries")
 }
 
 func fetchWithCrumb(buildURL func(c string) string, target interface{}) error {
