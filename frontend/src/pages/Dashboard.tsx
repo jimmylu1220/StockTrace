@@ -7,6 +7,7 @@ import MarketIndexCard from '../components/MarketIndexCard'
 import PotentialStockCard from '../components/PotentialStockCard'
 import EducationCard from '../components/EducationCard'
 import NewsCard from '../components/NewsCard'
+import MarketRankings from '../components/MarketRankings'
 
 export default function Dashboard() {
   const [overview, setOverview] = useState<MarketOverview | null>(null)
@@ -70,7 +71,7 @@ export default function Dashboard() {
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6 text-red-400 text-sm">{error}</div>
       )}
 
-      {/* Two-column layout: main content + news sidebar */}
+      {/* Three-column layout: main + rankings + news */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-8">
           {/* TW Market */}
@@ -146,8 +147,12 @@ export default function Dashboard() {
           </section>
         </div>
 
-        {/* News Sidebar */}
-        <div className="xl:col-span-1">
+        {/* Right sidebar: Rankings + News */}
+        <div className="xl:col-span-1 space-y-6">
+          {/* Market Rankings */}
+          <MarketRankings />
+
+          {/* News */}
           <div className="card sticky top-6">
             <div className="p-4 border-b border-gray-800">
               <h2 className="text-base font-semibold text-white mb-3">📰 財經新聞</h2>
@@ -163,7 +168,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="p-2 max-h-[600px] overflow-y-auto">
+            <div className="p-2 max-h-[500px] overflow-y-auto">
               {loading ? (
                 <div className="space-y-2 p-2">
                   {[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-gray-800 rounded animate-pulse" />)}

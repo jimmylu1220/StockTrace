@@ -32,6 +32,11 @@ export async function getPotentialStocks(): Promise<{ stocks: PotentialStock[]; 
   return res.data
 }
 
+export async function getStockQuote(symbol: string): Promise<StockQuote> {
+  const res = await api.get<StockQuote>(`/stocks/${encodeURIComponent(symbol)}/quote`)
+  return res.data
+}
+
 export async function getStockChart(symbol: string, interval = '1d', range = '3mo'): Promise<ChartData> {
   const res = await api.get<ChartData>(`/stocks/${symbol}/chart`, { params: { interval, range } })
   return res.data

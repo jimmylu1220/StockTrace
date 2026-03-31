@@ -33,6 +33,7 @@ func main() {
 			stocks.GET("/tw", handlers.GetTaiwanStocks)
 			stocks.GET("/us", handlers.GetUSStocks)
 			stocks.GET("/potential", handlers.GetPotentialStocks)
+			stocks.GET("/:symbol/quote", handlers.GetStockQuote)
 			stocks.GET("/:symbol/chart", handlers.GetStockChart)
 		}
 

@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react'
-import { X, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react'
-import {
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from 'recharts'
+import { useNavigate } from 'react-router-dom'
+import { X, TrendingUp, TrendingDown, BarChart3, Star, ExternalLink } from 'lucide-react'
 import type { StockQuote, ChartData } from '../types'
 import { getStockChart } from '../services/api'
+import { useWatchlist } from '../hooks/useWatchlist'
+import CandlestickChart from './CandlestickChart'
 
 interface Props {
   stock: StockQuote
@@ -26,18 +19,16 @@ const RANGES = [
   { label: '1年', value: '1y', interval: '1wk' },
 ]
 
-function formatDate(ts: number) {
-  const d = new Date(ts * 1000)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
 export default function StockDetailModal({ stock, onClose }: Props) {
   const [chartData, setChartData] = useState<ChartData | null>(null)
   const [range, setRange] = useState(RANGES[1])
   const [loading, setLoading] = useState(false)
+  const { isWatched, toggle } = useWatchlist()
+  const navigate = useNavigate()
   const isUp = stock.changePercent >= 0
   const isTW = stock.currency === 'TWD'
   const symbol = isTW ? 'NT$' : '$'
+  const watched = isWatched(stock.symbol)
 
   useEffect(() => {
     setLoading(true)
@@ -46,17 +37,10 @@ export default function StockDetailModal({ stock, onClose }: Props) {
       .finally(() => setLoading(false))
   }, [stock.symbol, range])
 
-  const chartPoints = chartData?.candles.map((c) => ({
-    date: formatDate(c.timestamp),
-    close: c.close,
-    volume: c.volume,
-    open: c.open,
-    high: c.high,
-    low: c.low,
-  })) ?? []
-
-  const minClose = Math.min(...chartPoints.map((d) => d.close)) * 0.995
-  const maxClose = Math.max(...chartPoints.map((d) => d.close)) * 1.005
+  const goToDetail = () => {
+    onClose()
+    navigate(`/stocks/${encodeURIComponent(stock.symbol)}`)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
@@ -70,9 +54,25 @@ export default function StockDetailModal({ stock, onClose }: Props) {
             </div>
             <p className="text-gray-400 mt-0.5">{stock.name}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-800 rounded-lg transition-colors">
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => toggle(stock.symbol)}
+              className={`p-1.5 rounded-lg transition-colors ${watched ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-400'}`}
+              title={watched ? '移除自選' : '加入自選'}
+            >
+              <Star className={`w-4 h-4 ${watched ? 'fill-yellow-400' : ''}`} />
+            </button>
+            <button
+              onClick={goToDetail}
+              className="p-1.5 hover:bg-gray-800 rounded-lg transition-colors text-gray-400 hover:text-white"
+              title="查看個股頁面"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-gray-800 rounded-lg transition-colors">
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
 
         {/* Price */}
@@ -119,7 +119,7 @@ export default function StockDetailModal({ stock, onClose }: Props) {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-gray-400" />
-              <span className="text-sm font-medium text-white">股價走勢</span>
+              <span className="text-sm font-medium text-white">K線圖</span>
             </div>
             <div className="flex gap-1">
               {RANGES.map((r) => (
@@ -140,43 +140,12 @@ export default function StockDetailModal({ stock, onClose }: Props) {
 
           {loading ? (
             <div className="h-48 flex items-center justify-center text-gray-500">載入中...</div>
-          ) : chartPoints.length > 0 ? (
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartPoints}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: '#6b7280', fontSize: 11 }}
-                    tickLine={false}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    domain={[minClose, maxClose]}
-                    tick={{ fill: '#6b7280', fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `${symbol}${v.toFixed(0)}`}
-                    width={60}
-                  />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-                    labelStyle={{ color: '#9ca3af' }}
-                    itemStyle={{ color: '#f9fafb' }}
-                    formatter={(value: number) => [`${symbol}${value.toFixed(2)}`, '收盤價']}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="close"
-                    stroke={isUp ? '#f87171' : '#4ade80'}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
           ) : (
-            <div className="h-48 flex items-center justify-center text-gray-500">無法載入圖表資料</div>
+            <CandlestickChart
+              candles={chartData?.candles ?? []}
+              height={192}
+              currencySymbol={symbol}
+            />
           )}
         </div>
       </div>

@@ -49,6 +49,16 @@ func GetPotentialStocks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"stocks": potentials, "total": len(potentials)})
 }
 
+func GetStockQuote(c *gin.Context) {
+	symbol := c.Param("symbol")
+	quotes, err := services.FetchQuotes([]string{symbol})
+	if err != nil || len(quotes) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "symbol not found"})
+		return
+	}
+	c.JSON(http.StatusOK, quotes[0])
+}
+
 func GetStockChart(c *gin.Context) {
 	symbol := c.Param("symbol")
 	interval := c.DefaultQuery("interval", "1d")

@@ -9,6 +9,9 @@ import IndustryLandscape from './pages/IndustryLandscape'
 import News from './pages/News'
 import Education from './pages/Education'
 import EducationDetail from './pages/EducationDetail'
+import StockDetail from './pages/StockDetail'
+import Watchlist from './pages/Watchlist'
+import Compare from './pages/Compare'
 
 export default function App() {
   return (
@@ -24,6 +27,9 @@ export default function App() {
           <Route path="news" element={<News />} />
           <Route path="education" element={<Education />} />
           <Route path="education/:id" element={<EducationDetail />} />
+          <Route path="stocks/:symbol" element={<StockDetail />} />
+          <Route path="watchlist" element={<Watchlist />} />
+          <Route path="compare" element={<Compare />} />
         </Route>
       </Routes>
     </BrowserRouter>

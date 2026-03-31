@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, Globe, Star, LineChart, BookOpen, BarChart2, Network, Newspaper } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, Globe, Star, LineChart, BookOpen, BarChart2, Network, Newspaper, GitCompare } from 'lucide-react'
+import GlobalSearch from './GlobalSearch'
 
 const navItems = [
   { to: '/',          icon: LayoutDashboard, label: '總覽' },
@@ -8,6 +9,8 @@ const navItems = [
   { to: '/us-stocks', icon: Globe,           label: '美股' },
   { to: '/potential', icon: Star,            label: '潛力股' },
   { to: '/signals',   icon: LineChart,       label: '統計買入信號' },
+  { to: '/watchlist', icon: Star,            label: '自選清單' },
+  { to: '/compare',   icon: GitCompare,      label: '股票比較' },
   { to: '/news',      icon: Newspaper,       label: '財經新聞' },
   { to: '/education', icon: BookOpen,        label: '投資學堂' },
 ]
@@ -24,7 +27,12 @@ export default function Layout() {
           <p className="text-xs text-gray-500 mt-1">台美股趨勢追蹤</p>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
+        {/* Global Search */}
+        <div className="pt-3">
+          <GlobalSearch />
+        </div>
+
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
